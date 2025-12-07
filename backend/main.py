@@ -21,6 +21,12 @@ class LeaderboardResponse(BaseModel):
     group_id: str
     leaderboard: List[LeaderboardEntry]
 
+class GroupCreateRequest(BaseModel):
+    name: str
+
+class JoinGroupRequest(BaseModel):
+    user_id: str
+
 #fetch the user’s current money and owned stocks
 @app.get("/users/{user_id}/portfolio", response_model=PortfolioResponse)
 async def get_portfolio(user_id: str):
@@ -81,3 +87,38 @@ async def get_leaderboard(group_id: str):
         "group_id": group_id,
         "leaderboard": leaderboard
     }
+
+#creating a new group
+@app.post("/groups")
+async def create_group(group: GroupCreateRequest):
+    new_group = {
+        "name": group.name,
+        "description": group.description or "",
+        "created_at": datetime.utcnow()
+    }
+    result = db.groups.insert_one(new_group)
+    #converts objectID to a string
+    new_group["_id"] = str(result.inserted_id) 
+    
+    return {
+        "message": "Group created successfully!",
+        "group": new_group
+    }
+
+#joining an existing group
+@app.post("/groups/{group_id}/join")
+async def join_group(group_id: str, request: JoinGroupRequest):
+    group = db.groups.find_one({"_id": group_id})
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found :(")
+    
+    user = db.users.find_one({"_id": request.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found :(")
+    
+    db.users.update_one(
+        {"_id": request.user_id},
+        {"$set": {"group_id": group_id}} #sets the user id to the group's id
+    )
+    
+    return {"message": f"User {request.user_id} joined group {group_id} successfully!"}
